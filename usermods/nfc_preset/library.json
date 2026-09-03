@@ -1,6 +1,20 @@
 {
   "name": "nfc_preset",
-  "build": { "libArchive": false },
+  "build": {
+    "libArchive": false,
+    "srcFilter": [
+      "+<*>",
+      "+<nfc-schema/src/NfcTypes.cpp>",
+      "+<nfc-schema/src/SchemaDecoder.cpp>",
+      "+<nfc-schema/src/NfcCatalog.cpp>",
+      "+<nfc-schema/src/NdefParser.cpp>",
+      "+<nfc-schema/src/UriSchema.cpp>"
+    ],
+    "flags": [
+      "-I usermods/nfc_preset/nfc-schema/src",
+      "-I usermods/nfc_preset/nfc-schema/gen/cpp"
+    ]
+  },
   "dependencies": [
     {
       "owner": "adafruit",

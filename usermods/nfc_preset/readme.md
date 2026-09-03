@@ -9,13 +9,14 @@ taps them with a phone. The `?c=` parameter (1–5) picks which preset fires. Ev
 about the URL is ignored: scheme, `www.`, sub-paths and any other query parameters. Only the
 host has to match.
 
-Self-contained: three source files, no external library beyond the PN532 driver.
+Tag detection + URL matching come from the shared **nfc-schema** submodule
+(`nfc-schema/`), so the tag format stays in lockstep with the totem firmware. Only the WLED
+binding lives here.
 
 | File | Role |
 |------|------|
 | `usermod_nfc_preset.cpp` | WLED binding: config, PN532 reader task, tap → preset → revert |
-| `ndef_url.h` / `.cpp` | NDEF walk + URL matching + `?c=` extraction (no WLED/Arduino dependency) |
-| `test/site_url_test.cpp` | native tests: real NDEF tag bytes → `c` |
+| `nfc-schema/` (submodule) | shared reader + `schemas.json` + generated `nfc_wled.h` (host, `?c=` range, preset config) |
 
 ---
 
@@ -132,7 +133,7 @@ The `Adafruit PN532` library is pulled in automatically by `library.json`.
 To run the URL-matching tests on your machine (no hardware needed):
 
 ```sh
-make -C usermods/nfc_preset/test
+make -C usermods/nfc_preset/nfc-schema/test
 ```
 
 ---
@@ -187,8 +188,9 @@ HTTPS://SacredImagination.CO/?c=3            https://sacredimagination.co/a/b?ut
 
 Tags for any other host are ignored (they show up in the Info panel as *NFC unknown tags*).
 
-To point the tags at a different site later, change `SITE_HOST` in `ndef_url.cpp` and
-reflash — the tags themselves don't need rewriting if the host stays the same.
+To point the tags at a different site later, change the `url-krayon` host in the shared
+`nfc-schema/schemas.json`, regenerate, and reflash — the tags themselves don't need rewriting
+if the host stays the same.
 
 ---
 
@@ -232,7 +234,7 @@ serial console.
 Verified here:
 
 - Firmware compiles and links clean for `esp32s3dev_16MB_opi` with the usermod enabled.
-- `test/site_url_test.cpp` — 25 cases through the real NDEF byte path: prefix codes 0x00–0x04,
+- `nfc-schema/test/` — native cases through the real NDEF byte path: prefix codes 0x00–0x04,
   `www.`, mixed case, sub-paths, `?c=` in any position, out-of-range and malformed `c`,
   rejection of other hosts, `sacredimagination.company`, the host appearing in a path, a
   non-URI TNF, and the incremental read (every truncated prefix must fail, the first complete

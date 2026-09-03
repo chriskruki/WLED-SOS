@@ -1,0 +1,4 @@
+[submodule "usermods/nfc_preset/nfc-schema"]
+	path = usermods/nfc_preset/nfc-schema
+	url = https://github.com/chriskruki/nfc-schema.git
+	branch = main

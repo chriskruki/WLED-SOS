@@ -1,10 +1,13 @@
 #include "wled.h"
 #include <Adafruit_PN532.h>
-#include "ndef_url.h"
+#include "NfcCatalog.h"
+#include "nfc_wled.h"        // generated from nfc-schema: nfc::wled::catalog() + preset config
 
 // Tap an NFC tag holding a https://sacredimagination.co URL -> apply a preset for a few
 // seconds -> fall back to another preset. The tag's ?c=1..5 query parameter selects which
-// preset; the URL matching itself lives in ndef_url.cpp.
+// preset; tag detection + URL matching live in the shared nfc-schema reader.
+
+static constexpr uint8_t NFC_COLORS = nfc::wled::PRESET_COUNT;  // preset slots (from nfc-schema)
 
 #define NFC_FIRST_PAGE     4     // NTAG/Ultralight user memory starts here
 #define NFC_MAX_TAG_BYTES 64     // read cap; a typical tag decodes after ~32
@@ -61,7 +64,13 @@ class NfcPresetUsermod : public Usermod {
       uint8_t tag[NFC_MAX_TAG_BYTES];
       for (uint8_t page = 0; page < NFC_MAX_TAG_BYTES / 4; page++) {
         if (!readPage(NFC_FIRST_PAGE + page, tag + page * 4)) return false;
-        if (decodeTagUrl(tag, (size_t)(page + 1) * 4, color)) return true;
+        nfc::PollResult r;
+        if (nfc::wled::catalog().decodeTag(tag, (size_t)(page + 1) * 4, r)) {
+          const uint8_t c = r.fields.u8("c", 0);
+          color = (c >= nfc::wled::PRESET_SELECT_MIN && c <= nfc::wled::PRESET_SELECT_MAX)
+                    ? c : nfc::wled::PRESET_SELECT_DEFAULT;
+          return true;
+        }
       }
       return false;
     }
