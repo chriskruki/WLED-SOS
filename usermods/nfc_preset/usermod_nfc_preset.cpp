@@ -44,6 +44,8 @@ class NfcPresetUsermod : public Usermod {
     uint8_t  seenUidLen = 0;
     uint16_t lastTypeId = 0;        // diagnostics: last decoded schema typeId
     uint8_t  lastRawC   = 0;        // diagnostics: last raw ?c= value before clamping
+    uint8_t  tagBuf[NFC_MAX_TAG_BYTES] = {0};  // diagnostics: raw pages of the last polled tag
+    uint8_t  tagLen = 0;
 
     uint8_t       tapActive = 0;    // preset currently held by a tap, 0 = none
     bool          tapLanded = false;
@@ -70,11 +72,12 @@ class NfcPresetUsermod : public Usermod {
     // Read pages until the message parses rather than to a fixed size: a short URL decodes
     // in ~8 exchanges instead of 16, and any tag capacity works without a config knob.
     bool readTag(uint8_t& color) {
-      uint8_t tag[NFC_MAX_TAG_BYTES];
+      tagLen = 0;
       for (uint8_t page = 0; page < NFC_MAX_TAG_BYTES / 4; page++) {
-        if (!readPage(NFC_FIRST_PAGE + page, tag + page * 4)) return false;
+        if (!readPage(NFC_FIRST_PAGE + page, tagBuf + page * 4)) break;  // keep what we read
+        tagLen = (uint8_t)((page + 1) * 4);
         nfc::PollResult r;
-        if (nfc::wled::catalog().decodeTag(tag, (size_t)(page + 1) * 4, r)) {
+        if (nfc::wled::catalog().decodeTag(tagBuf, tagLen, r)) {
           const uint8_t c = r.fields.u8("c", 0);
           lastTypeId = r.typeId;
           lastRawC   = c;
@@ -103,12 +106,17 @@ class NfcPresetUsermod : public Usermod {
       if (!armed && uidLen == lastUidLen && memcmp(uid, lastUid, uidLen) == 0) return;
 
       uint8_t color;
-      if (!readTag(color)) {
+      const bool matched = readTag(color);           // fills tagBuf/tagLen
+      char url[96];
+      const bool haveUrl = nfc::extractUri(tagBuf, tagLen, url, sizeof url);
+
+      if (!matched) {
         missCount++;
         if (fresh) {
           Serial.print(F("[NFC] tag "));
           printUid(uid, uidLen);
-          Serial.println(F(" read, but no bound host/schema matched (unknown)"));
+          if (haveUrl) Serial.printf(" URL=%s -> no bound host/schema matched\n", url);
+          else         Serial.println(F(" -> no readable NDEF URL on tag"));
         }
         return;
       }
@@ -121,7 +129,7 @@ class NfcPresetUsermod : public Usermod {
       if (fresh) {
         Serial.print(F("[NFC] tag "));
         printUid(uid, uidLen);
-        Serial.printf(" decoded typeId=0x%02X c=%u -> select %u\n", lastTypeId, lastRawC, color);
+        Serial.printf(" URL=%s typeId=0x%02X c=%u -> select %u\n", haveUrl ? url : "?", lastTypeId, lastRawC, color);
       }
     }
 
