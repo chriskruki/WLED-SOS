@@ -40,6 +40,11 @@ class NfcPresetUsermod : public Usermod {
     uint8_t lastUidLen = 0;
     bool    armed      = true;
 
+    uint8_t  seenUid[7] = {0};      // serial-print dedup: one line per distinct tag while present
+    uint8_t  seenUidLen = 0;
+    uint16_t lastTypeId = 0;        // diagnostics: last decoded schema typeId
+    uint8_t  lastRawC   = 0;        // diagnostics: last raw ?c= value before clamping
+
     uint8_t       tapActive = 0;    // preset currently held by a tap, 0 = none
     bool          tapLanded = false;
     unsigned long revertAt  = 0;
@@ -58,6 +63,10 @@ class NfcPresetUsermod : public Usermod {
       return false;
     }
 
+    void printUid(const uint8_t* uid, uint8_t len) {
+      for (uint8_t i = 0; i < len; i++) Serial.printf("%02X", uid[i]);
+    }
+
     // Read pages until the message parses rather than to a fixed size: a short URL decodes
     // in ~8 exchanges instead of 16, and any tag capacity works without a config knob.
     bool readTag(uint8_t& color) {
@@ -67,6 +76,8 @@ class NfcPresetUsermod : public Usermod {
         nfc::PollResult r;
         if (nfc::wled::catalog().decodeTag(tag, (size_t)(page + 1) * 4, r)) {
           const uint8_t c = r.fields.u8("c", 0);
+          lastTypeId = r.typeId;
+          lastRawC   = c;
           color = (c >= nfc::wled::PRESET_SELECT_MIN && c <= nfc::wled::PRESET_SELECT_MAX)
                     ? c : nfc::wled::PRESET_SELECT_DEFAULT;
           return true;
@@ -81,18 +92,37 @@ class NfcPresetUsermod : public Usermod {
       uint8_t uid[7], uidLen = 0;
       if (!pn532->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLen, NFC_FIELD_TIMEOUT)) {
         armed = true;                               // field empty: re-arm for the next tap
+        seenUidLen = 0;                             // ...and let the next tag print again
         return;
       }
+
+      // Serial dedup: emit one diagnostic line per distinct tag while it sits in the field.
+      const bool fresh = (uidLen != seenUidLen) || memcmp(uid, seenUid, uidLen) != 0;
+      if (fresh) { seenUidLen = uidLen; memcpy(seenUid, uid, uidLen); }
+
       if (!armed && uidLen == lastUidLen && memcmp(uid, lastUid, uidLen) == 0) return;
 
       uint8_t color;
-      if (!readTag(color)) { missCount++; return; }
+      if (!readTag(color)) {
+        missCount++;
+        if (fresh) {
+          Serial.print(F("[NFC] tag "));
+          printUid(uid, uidLen);
+          Serial.println(F(" read, but no bound host/schema matched (unknown)"));
+        }
+        return;
+      }
 
       armed = false;
       lastUidLen = uidLen;
       memcpy(lastUid, uid, uidLen);
       xQueueSend(taps, &color, 0);
       tapCount++;
+      if (fresh) {
+        Serial.print(F("[NFC] tag "));
+        printUid(uid, uidLen);
+        Serial.printf(" decoded typeId=0x%02X c=%u -> select %u\n", lastTypeId, lastRawC, color);
+      }
     }
 
     void readerTask() {
@@ -103,6 +133,8 @@ class NfcPresetUsermod : public Usermod {
       readerFound = pn532->getFirmwareVersion() != 0;
       if (readerFound) pn532->SAMConfig();
       probed = true;
+      Serial.println(readerFound ? F("[NFC] PN532 found - reader up, tap a tag")
+                                 : F("[NFC] PN532 not found - check wiring / pins / HSU switches"));
 
       while (readerFound && !taskStop) {
         pollOnce();
