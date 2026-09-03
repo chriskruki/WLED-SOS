@@ -1,7 +1,7 @@
 #include "wled.h"
 #include <Adafruit_PN532.h>
-#include "NfcCatalog.h"
-#include "nfc_wled.h"        // generated from nfc-schema: nfc::wled::catalog() + preset config
+#include "nfc-schema/src/NfcCatalog.h"
+#include "nfc-schema/gen/cpp/nfc_wled.h"   // generated: nfc::wled::catalog() + preset config
 
 // Tap an NFC tag holding a https://sacredimagination.co URL -> apply a preset for a few
 // seconds -> fall back to another preset. The tag's ?c=1..5 query parameter selects which
