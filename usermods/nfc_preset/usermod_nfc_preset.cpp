@@ -115,8 +115,15 @@ class NfcPresetUsermod : public Usermod {
         if (fresh) {
           Serial.print(F("[NFC] tag "));
           printUid(uid, uidLen);
-          if (haveUrl) Serial.printf(" URL=%s -> no bound host/schema matched\n", url);
-          else         Serial.println(F(" -> no readable NDEF URL on tag"));
+          if (haveUrl) {
+            Serial.printf(" URL=%s -> no bound host/schema matched\n", url);
+          } else {
+            // No URI record: dump the raw bytes so blank (all 00) vs read-fault (0 bytes)
+            // vs a non-URL NDEF (starts 03 ..) is obvious.
+            Serial.printf(" -> no NDEF URL. read %u bytes:", tagLen);
+            for (uint8_t i = 0; i < tagLen && i < 32; i++) Serial.printf(" %02X", tagBuf[i]);
+            Serial.println();
+          }
         }
         return;
       }
